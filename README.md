@@ -2,6 +2,9 @@
 
 ## API spec
 
+GET /requests/status
+-> 200 returns status of all transactions
+
 POST /requests
 -> 202 returns a transaction ID
 
