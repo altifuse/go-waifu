@@ -16,6 +16,6 @@ GET /requests/{transactionId}/output
 -> 404 if missing
 -> 200 with image
 
-DELETE /requests/{transactionId}
+DELETE /requests/{transactionId} (TODO in the future)
 -> 404 if missing
 -> 204 if successful
