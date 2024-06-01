@@ -3,37 +3,40 @@ package main
 import (
 	"log"
 	"net/http"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
 
 type Status string
-type transaction struct {
+type Transaction struct {
 	ID               string `json:"id"`
 	OriginalFilename string `json:"originalFilename"`
 	Status           Status `json:"status"`
 }
-type processEngine struct {
-	Queue   []string
-	Current string
-	Done    []string
+type Response struct {
+	Message string `json:"message"`
 }
 
 const inPath = "./in/"
 const processingPath = "./processing/"
 const outPath = "./out/"
+const failedPath = "./failed/"
 const (
 	Pending    Status = "PENDING"
 	Processing Status = "PROCESSING"
 	Done       Status = "DONE"
 	Failed     Status = "FAILED"
 )
+const transactionQueueCapacity = 10
 
-var transactions = map[string]transaction{}
-var runtime = processEngine{}
+var transactions = map[string]Transaction{}
+var transactionQueue chan string
 
 func main() {
+	transactionQueue = make(chan string, transactionQueueCapacity)
+	go runtimeLoop(transactionQueue)
 	router := gin.Default()
 	router.POST("/requests", uploadImage)
 	router.GET("/requests/status", getAllTransactionStatus)
@@ -44,12 +47,17 @@ func main() {
 
 func uploadImage(ctx *gin.Context) {
 	file, _ := ctx.FormFile("file")
-	t := transaction{ID: uuid.New().String(), OriginalFilename: file.Filename, Status: Pending}
-	log.Println("Initialized transaction " + t.ID)
-	transactions[t.ID] = t
-	runtime.Queue = append(runtime.Queue, t.ID)
-	ctx.SaveUploadedFile(file, inPath+t.ID)
-	ctx.JSON(http.StatusAccepted, t)
+	t := Transaction{ID: uuid.New().String(), OriginalFilename: file.Filename, Status: Pending}
+	log.Println("Preparing transaction " + t.ID)
+	if enqueueTransaction(t) {
+		transactions[t.ID] = t
+		log.Println("Transaction enqueued successfully")
+		ctx.SaveUploadedFile(file, inPath+t.ID)
+		ctx.JSON(http.StatusAccepted, t)
+	} else {
+		log.Println("Transaction could not be enqueued - queue is full")
+		ctx.AbortWithStatusJSON(http.StatusServiceUnavailable, Response{Message: "Queue is currently full, please try again later."})
+	}
 }
 
 func getAllTransactionStatus(ctx *gin.Context) {
@@ -71,4 +79,35 @@ func getOutput(ctx *gin.Context) {
 		ctx.Status(http.StatusNotFound)
 	}
 	ctx.File(outPath + t.ID)
+}
+
+func enqueueTransaction(transaction Transaction) bool {
+	select {
+	case transactionQueue <- transaction.ID:
+		return true
+	default:
+		return false
+	}
+}
+
+func runtimeLoop(jobChannel <-chan string) {
+	for {
+		log.Println("Looping over transaction queue")
+		for transactionID := range jobChannel {
+			processTransaction(transactionID)
+		}
+	}
+}
+
+func processTransaction(transactionID string) {
+	log.Println("Processing transaction " + transactionID)
+	// TODO: move file to processing dir
+	// TODO: call waifu2x
+	// TODO: if exit code 0, confirm file is present in out dir
+	// - if yes, delete file in processing and set status to Done;
+	//   if no, move file to failed dir and set status to Failed
+	time.Sleep(5 * time.Second)
+	t := transactions[transactionID]
+	t.Status = Done
+	transactions[transactionID] = t
 }
