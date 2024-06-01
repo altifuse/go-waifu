@@ -1,12 +1,14 @@
 # go-waifu
+A simple, containerized web UI for [nihui/waifu2x-ncnn-vulkan](https://github.com/nihui/waifu2x-ncnn-vulkan).
 
 ## API spec
 
-GET /requests/status
--> 200 returns status of all transactions
-
 POST /requests
 -> 202 returns a transaction ID
+-> 503 if queue is full
+
+GET /requests/status
+-> 200 returns status of all transactions
 
 GET /requests/{transactionId}/status
 -> 404 if missing
